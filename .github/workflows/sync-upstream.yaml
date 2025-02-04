@@ -1,0 +1,58 @@
+name: Upstream Sync ReWrite
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "30 07,15,23 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-latest-from-upstream:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+    outputs:
+      successed: ${{ steps.git_rebase.outputs.successed }}
+    steps:
+      - name: Output date
+        id: timestamp
+        run: |
+          echo "Current date: `date`"
+
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Git rebase
+        id: git_rebase
+        run: |
+          # add upstream
+          git remote add upstream https://github.com/ChatGPTNextWeb/ChatGPT-Next-Web
+
+          # fetch last commit
+          git fetch upstream
+
+          # checkout main branch
+          git checkout main || git checkout -b main origin/main
+
+          # config committer information
+          git config --local user.name "$(git log -n 1 --pretty=format:%cn upstream/main)"
+          git config --local user.email "$(git log -n 1 --pretty=format:%ce upstream/main)"
+
+          # rebase and push to remote
+          git rebase upstream/main
+
+          if [ $? -ne 0 ]; then
+            echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次，详细教程请查看：https://github.com/Yidadaa/ChatGPT-Next-Web/blob/main/README_CN.md#%E6%89%93%E5%BC%80%E8%87%AA%E5%8A%A8%E6%9B%B4%E6%96%B0"
+            echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork. Please refer to the detailed tutorial for instructions: https://github.com/Yidadaa/ChatGPT-Next-Web#enable-automatic-updates"
+            exit 1
+          fi
+
+          # push to remote
+          git push origin main --force-with-lease
+
+          # output
+          echo "successed=true" >> $GITHUB_OUTPUT
